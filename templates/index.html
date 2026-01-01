@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Duplex Printer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .upload-section {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-section.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: background 0.3s ease;
+        }
+
+        .file-label:hover {
+            background: #5568d3;
+        }
+
+        .file-name {
+            margin-top: 15px;
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .info-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .info-section.active {
+            display: block;
+        }
+
+        .page-order {
+            margin: 20px 0;
+        }
+
+        .page-order h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .page-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .page-number {
+            background: #667eea;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .page-number.original {
+            background: #48bb78;
+        }
+
+        .page-number.final {
+            background: #ed8936;
+        }
+
+        .controls {
+            margin-top: 30px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-phase1 {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-phase1:hover:not(:disabled) {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-phase2 {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-phase2:hover:not(:disabled) {
+            background: #dd6b20;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4);
+        }
+
+        .console {
+            margin-top: 30px;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .console.active {
+            display: block;
+        }
+
+        .console-line {
+            margin: 5px 0;
+            white-space: pre-wrap;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+        }
+
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            display: block;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            display: block;
+        }
+
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            display: block;
+        }
+
+        .section-title {
+            color: #667eea;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .printer-input {
+            margin-top: 15px;
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 1em;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .printer-input::placeholder {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 PDF Duplex Printer</h1>
+        
+        <div class="upload-section" id="uploadSection">
+            <label for="pdfFile" class="file-label">
+                📁 Select PDF File
+            </label>
+            <input type="file" id="pdfFile" accept=".pdf" />
+            <div class="file-name" id="fileName"></div>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="info-section" id="infoSection">
+            <div class="section-title">Page Order Information</div>
+            
+            <div class="page-order">
+                <h3>Original Page Sequence</h3>
+                <div class="page-list" id="originalSequence"></div>
+            </div>
+
+            <div class="page-order">
+                <h3>Phase 1: Odd Pages (Reversed Order)</h3>
+                <div class="page-list" id="oddPagesFinal"></div>
+                <p style="margin-top: 10px; color: #666;">
+                    <strong>Original:</strong> <span id="oddPagesOriginal"></span> → 
+                    <strong>Final:</strong> <span id="oddPagesFinalText"></span>
+                </p>
+            </div>
+
+            <div class="page-order">
+                <h3>Phase 2: Even Pages (Rotated 180°)</h3>
+                <div class="page-list" id="evenPagesFinal"></div>
+                <p style="margin-top: 10px; color: #666;">
+                    <strong>Pages:</strong> <span id="evenPagesText"></span> (all rotated 180°)
+                </p>
+            </div>
+
+            <div class="controls">
+                <div style="width: 100%; margin-bottom: 15px;">
+                    <input type="text" class="printer-input" id="printerName" 
+                           placeholder="Printer name (optional - leave empty for default printer)">
+                </div>
+                <button class="btn btn-phase1" id="btnPhase1" disabled>
+                    🖨️ Start Phase 1 (Print Odd Pages)
+                </button>
+                <button class="btn btn-phase2" id="btnPhase2" disabled>
+                    🖨️ Start Phase 2 (Print Even Pages)
+                </button>
+            </div>
+        </div>
+
+        <div class="console" id="console"></div>
+    </div>
+
+    <script>
+        let currentPageInfo = null;
+
+        const uploadSection = document.getElementById('uploadSection');
+        const fileInput = document.getElementById('pdfFile');
+        const fileName = document.getElementById('fileName');
+        const infoSection = document.getElementById('infoSection');
+        const status = document.getElementById('status');
+        const consoleDiv = document.getElementById('console');
+        const btnPhase1 = document.getElementById('btnPhase1');
+        const btnPhase2 = document.getElementById('btnPhase2');
+        const printerNameInput = document.getElementById('printerName');
+
+        // File input change
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // Drag and drop
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragover');
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === 'application/pdf') {
+                fileInput.files = files;
+                handleFileSelect();
+            }
+        });
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            fileName.textContent = `Selected: ${file.name}`;
+            showStatus('Uploading and processing PDF...', 'info');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentPageInfo = data.page_info;
+                    displayPageInfo(data.page_info);
+                    showStatus('PDF processed successfully!', 'success');
+                    btnPhase1.disabled = false;
+                    btnPhase2.disabled = false;
+                    logToConsole('PDF Processing Complete');
+                    logToConsole(`Total pages: ${data.page_info.total_pages}`);
+                    logToConsole(`Original sequence: ${data.page_info.original_sequence.join(', ')}`);
+                } else {
+                    showStatus('Error: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Error: ' + error.message, 'error');
+                logToConsole('Error: ' + error.message);
+            });
+        }
+
+        function displayPageInfo(pageInfo) {
+            // Original sequence
+            const originalSeq = document.getElementById('originalSequence');
+            originalSeq.innerHTML = '';
+            pageInfo.original_sequence.forEach(page => {
+                const span = document.createElement('span');
+                span.className = 'page-number original';
+                span.textContent = page;
+                originalSeq.appendChild(span);
+            });
+
+            // Odd pages
+            const oddFinal = document.getElementById('oddPagesFinal');
+            oddFinal.innerHTML = '';
+            pageInfo.odd_pages_final.forEach(page => {
+                const span = document.createElement('span');
+                span.className = 'page-number final';
+                span.textContent = page;
+                oddFinal.appendChild(span);
+            });
+            document.getElementById('oddPagesOriginal').textContent = 
+                pageInfo.odd_pages_original.join(', ');
+            document.getElementById('oddPagesFinalText').textContent = 
+                pageInfo.odd_pages_final.join(', ');
+
+            // Even pages
+            const evenFinal = document.getElementById('evenPagesFinal');
+            evenFinal.innerHTML = '';
+            pageInfo.even_pages_final.forEach(page => {
+                const span = document.createElement('span');
+                span.className = 'page-number final';
+                span.textContent = page + '°';
+                span.title = 'Rotated 180°';
+                evenFinal.appendChild(span);
+            });
+            document.getElementById('evenPagesText').textContent = 
+                pageInfo.even_pages_final.join(', ');
+
+            infoSection.classList.add('active');
+        }
+
+        function logToConsole(message) {
+            consoleDiv.classList.add('active');
+            const line = document.createElement('div');
+            line.className = 'console-line';
+            line.textContent = message;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        btnPhase1.addEventListener('click', () => {
+            if (!currentPageInfo) return;
+            
+            const printerName = printerNameInput.value.trim() || null;
+            logToConsole('\n=== Starting Phase 1: Printing Odd Pages ===');
+            logToConsole(`Original sequence: ${currentPageInfo.odd_pages_original.join(', ')}`);
+            logToConsole(`Printing order: ${currentPageInfo.odd_pages_final.join(', ')}`);
+            logToConsole('(Pages will be printed in reverse order so page 1 ends up on top)');
+            
+            showStatus('Sending print job for Phase 1...', 'info');
+            btnPhase1.disabled = true;
+
+            fetch('/print', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phase: 'phase1',
+                    pdf_path: currentPageInfo.odd_output,
+                    printer_name: printerName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('Phase 1 print job sent successfully!', 'success');
+                    logToConsole('✓ Print job sent successfully');
+                } else {
+                    showStatus('Error: ' + data.error, 'error');
+                    logToConsole('✗ Error: ' + data.error);
+                }
+                btnPhase1.disabled = false;
+            })
+            .catch(error => {
+                showStatus('Error: ' + error.message, 'error');
+                logToConsole('✗ Error: ' + error.message);
+                btnPhase1.disabled = false;
+            });
+        });
+
+        btnPhase2.addEventListener('click', () => {
+            if (!currentPageInfo) return;
+            
+            const printerName = printerNameInput.value.trim() || null;
+            logToConsole('\n=== Starting Phase 2: Printing Even Pages ===');
+            logToConsole(`Pages to print: ${currentPageInfo.even_pages_final.join(', ')}`);
+            logToConsole('(All pages are rotated 180° and will print on the back of odd pages)');
+            
+            showStatus('Sending print job for Phase 2...', 'info');
+            btnPhase2.disabled = true;
+
+            fetch('/print', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phase: 'phase2',
+                    pdf_path: currentPageInfo.even_output,
+                    printer_name: printerName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('Phase 2 print job sent successfully!', 'success');
+                    logToConsole('✓ Print job sent successfully');
+                } else {
+                    showStatus('Error: ' + data.error, 'error');
+                    logToConsole('✗ Error: ' + data.error);
+                }
+                btnPhase2.disabled = false;
+            })
+            .catch(error => {
+                showStatus('Error: ' + error.message, 'error');
+                logToConsole('✗ Error: ' + error.message);
+                btnPhase2.disabled = false;
+            });
+        });
+    </script>
+</body>
+</html>
+
