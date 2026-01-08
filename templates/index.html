@@ -255,18 +255,70 @@
         .printer-input::placeholder {
             color: #999;
         }
+
+        .mode-toggle {
+            margin-bottom: 20px;
+            text-align: center;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 8px;
+        }
+
+        .mode-toggle label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .mode-toggle input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .file-list {
+            margin-top: 15px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .file-list-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #f0f2ff;
+            border-radius: 5px;
+            font-size: 0.9em;
+            color: #333;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📄 PDF Duplex Printer</h1>
         
+        <div class="mode-toggle">
+            <label>
+                <input type="checkbox" id="multipleMode" />
+                <span>📚 Process Multiple PDFs (merge into one)</span>
+            </label>
+        </div>
+        
         <div class="upload-section" id="uploadSection">
-            <label for="pdfFile" class="file-label">
+            <label for="pdfFile" class="file-label" id="fileLabel">
                 📁 Select PDF File
             </label>
             <input type="file" id="pdfFile" accept=".pdf" />
             <div class="file-name" id="fileName"></div>
+            <div class="file-list" id="fileList" style="display: none;"></div>
         </div>
 
         <div class="status" id="status"></div>
@@ -274,6 +326,11 @@
         <div class="info-section" id="infoSection">
             <div class="section-title">Page Order Information</div>
             
+            <div class="page-order" id="filesProcessedSection" style="display: none;">
+                <h3>Files Processed</h3>
+                <div id="filesProcessedList"></div>
+            </div>
+
             <div class="page-order">
                 <h3>Original Page Sequence</h3>
                 <div class="page-list" id="originalSequence"></div>
@@ -318,10 +375,14 @@
 
     <script>
         let currentPageInfo = null;
+        let isMultipleMode = false;
 
         const uploadSection = document.getElementById('uploadSection');
         const fileInput = document.getElementById('pdfFile');
         const fileName = document.getElementById('fileName');
+        const fileList = document.getElementById('fileList');
+        const fileLabel = document.getElementById('fileLabel');
+        const multipleModeCheckbox = document.getElementById('multipleMode');
         const infoSection = document.getElementById('infoSection');
         const status = document.getElementById('status');
         const consoleDiv = document.getElementById('console');
@@ -329,6 +390,31 @@
         const btnPhase2 = document.getElementById('btnPhase2');
         const btnReverse = document.getElementById('btnReverse');
         const printerNameInput = document.getElementById('printerName');
+
+        // Multiple mode toggle
+        multipleModeCheckbox.addEventListener('change', (e) => {
+            isMultipleMode = e.target.checked;
+            fileInput.multiple = isMultipleMode;
+            fileInput.value = ''; // Reset file input
+            fileName.textContent = '';
+            fileList.innerHTML = '';
+            fileList.style.display = 'none';
+            
+            if (isMultipleMode) {
+                fileLabel.textContent = '📚 Select Multiple PDF Files';
+                logToConsole('Multiple file mode enabled - selected files will be merged');
+            } else {
+                fileLabel.textContent = '📁 Select PDF File';
+                logToConsole('Single file mode enabled');
+            }
+            
+            // Reset state
+            infoSection.classList.remove('active');
+            btnPhase1.disabled = true;
+            btnPhase2.disabled = true;
+            btnReverse.disabled = true;
+            currentPageInfo = null;
+        });
 
         // File input change
         fileInput.addEventListener('change', handleFileSelect);
@@ -346,50 +432,133 @@
         uploadSection.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadSection.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0 && files[0].type === 'application/pdf') {
-                fileInput.files = files;
+            const files = Array.from(e.dataTransfer.files).filter(f => 
+                f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+            );
+            
+            if (files.length > 0) {
+                const dataTransfer = new DataTransfer();
+                files.forEach(file => dataTransfer.items.add(file));
+                fileInput.files = dataTransfer.files;
                 handleFileSelect();
             }
         });
 
         function handleFileSelect() {
-            const file = fileInput.files[0];
-            if (!file) return;
+            const files = Array.from(fileInput.files);
+            if (files.length === 0) return;
 
-            fileName.textContent = `Selected: ${file.name}`;
-            showStatus('Uploading and processing PDF...', 'info');
+            if (isMultipleMode) {
+                // Multiple file mode
+                if (files.length === 0) return;
+                
+                // Display file list
+                fileName.textContent = `Selected ${files.length} file(s)`;
+                fileList.innerHTML = '';
+                files.forEach((file, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'file-list-item';
+                    item.textContent = `${index + 1}. ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                    fileList.appendChild(item);
+                });
+                fileList.style.display = 'block';
+                
+                showStatus(`Uploading and processing ${files.length} PDF(s)...`, 'info');
+                logToConsole(`\n=== Processing ${files.length} PDF files ===`);
+                files.forEach((file, idx) => {
+                    logToConsole(`${idx + 1}. ${file.name}`);
+                });
 
-            const formData = new FormData();
-            formData.append('file', file);
+                const formData = new FormData();
+                files.forEach(file => {
+                    formData.append('files[]', file);
+                });
 
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    currentPageInfo = data.page_info;
-                    displayPageInfo(data.page_info);
-                    showStatus('PDF processed successfully!', 'success');
-                    btnPhase1.disabled = false;
-                    btnPhase2.disabled = false;
-                    // Reverse button will be enabled after Phase 1 completes
-                    logToConsole('PDF Processing Complete');
-                    logToConsole(`Total pages: ${data.page_info.total_pages}`);
-                    logToConsole(`Original sequence: ${data.page_info.original_sequence.join(', ')}`);
-                } else {
-                    showStatus('Error: ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                showStatus('Error: ' + error.message, 'error');
-                logToConsole('Error: ' + error.message);
-            });
+                fetch('/upload-multiple', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentPageInfo = data.page_info;
+                        displayPageInfo(data.page_info);
+                        showStatus(`${files.length} PDF(s) processed and merged successfully!`, 'success');
+                        btnPhase1.disabled = false;
+                        btnPhase2.disabled = false;
+                        logToConsole('\n=== Batch Processing Complete ===');
+                        logToConsole(`Files processed: ${data.page_info.files_processed.length}`);
+                        logToConsole(`Total pages: ${data.page_info.total_pages}`);
+                        data.page_info.files_processed.forEach((fileInfo, idx) => {
+                            logToConsole(`  ${idx + 1}. ${fileInfo.filename} - ${fileInfo.total_pages} pages (${fileInfo.odd_pages} odd, ${fileInfo.even_pages} even)`);
+                        });
+                    } else {
+                        showStatus('Error: ' + data.error, 'error');
+                        logToConsole('✗ Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    showStatus('Error: ' + error.message, 'error');
+                    logToConsole('✗ Error: ' + error.message);
+                });
+            } else {
+                // Single file mode
+                const file = files[0];
+                fileName.textContent = `Selected: ${file.name}`;
+                fileList.style.display = 'none';
+                showStatus('Uploading and processing PDF...', 'info');
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentPageInfo = data.page_info;
+                        displayPageInfo(data.page_info);
+                        showStatus('PDF processed successfully!', 'success');
+                        btnPhase1.disabled = false;
+                        btnPhase2.disabled = false;
+                        logToConsole('PDF Processing Complete');
+                        logToConsole(`Total pages: ${data.page_info.total_pages}`);
+                        logToConsole(`Original sequence: ${data.page_info.original_sequence.join(', ')}`);
+                    } else {
+                        showStatus('Error: ' + data.error, 'error');
+                        logToConsole('✗ Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    showStatus('Error: ' + error.message, 'error');
+                    logToConsole('✗ Error: ' + error.message);
+                });
+            }
         }
 
         function displayPageInfo(pageInfo) {
+            // Show files processed if multiple files
+            const filesProcessedSection = document.getElementById('filesProcessedSection');
+            const filesProcessedList = document.getElementById('filesProcessedList');
+            if (pageInfo.files_processed && pageInfo.files_processed.length > 0) {
+                filesProcessedSection.style.display = 'block';
+                filesProcessedList.innerHTML = '';
+                pageInfo.files_processed.forEach((fileInfo, idx) => {
+                    const div = document.createElement('div');
+                    div.style.marginTop = '10px';
+                    div.style.padding = '10px';
+                    div.style.background = '#f0f2ff';
+                    div.style.borderRadius = '5px';
+                    div.innerHTML = `<strong>${idx + 1}. ${fileInfo.filename}</strong><br>
+                                     Pages: ${fileInfo.total_pages} (Odd: ${fileInfo.odd_pages}, Even: ${fileInfo.even_pages})`;
+                    filesProcessedList.appendChild(div);
+                });
+            } else {
+                filesProcessedSection.style.display = 'none';
+            }
+
             // Original sequence
             const originalSeq = document.getElementById('originalSequence');
             originalSeq.innerHTML = '';

@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import json
-from pdf_processor import process_pdf, print_pdf
+from pdf_processor import process_pdf, process_multiple_pdfs, print_pdf
 from printer_reverse import reverse_page, manual_reverse_instructions
 import logging
 
@@ -48,8 +48,12 @@ def upload_file():
         filepath = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(filepath)
         
+        # Get options from form data
+        remove_first_last = request.form.get('remove_first_last', 'true').lower() == 'true'
+        add_watermarks = request.form.get('add_watermarks', 'true').lower() == 'true'
+        
         # Process the PDF
-        odd_path, even_path, page_info = process_pdf(filepath, OUTPUT_FOLDER)
+        odd_path, even_path, page_info = process_pdf(filepath, OUTPUT_FOLDER, add_watermarks=add_watermarks, remove_first_last=remove_first_last)
         
         # Convert paths to relative for web access
         page_info['odd_output'] = os.path.relpath(odd_path)
@@ -115,6 +119,51 @@ def reverse_page_endpoint():
     
     except Exception as e:
         logger.error(f"Error reversing page: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/upload-multiple', methods=['POST'])
+def upload_multiple_files():
+    """Handle multiple PDF file uploads, process them, and merge results"""
+    try:
+        if 'files[]' not in request.files:
+            return jsonify({'error': 'No files provided'}), 400
+        
+        files = request.files.getlist('files[]')
+        
+        if not files or files[0].filename == '':
+            return jsonify({'error': 'No files selected'}), 400
+        
+        # Validate and save all PDFs
+        saved_paths = []
+        for file in files:
+            if not file.filename.lower().endswith('.pdf'):
+                return jsonify({'error': f'File {file.filename} is not a PDF'}), 400
+            
+            # Save uploaded file
+            filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+            file.save(filepath)
+            saved_paths.append(filepath)
+        
+        # Get options from form data
+        remove_first_last = request.form.get('remove_first_last', 'true').lower() == 'true'
+        add_watermarks = request.form.get('add_watermarks', 'true').lower() == 'true'
+        
+        # Process all PDFs and merge them
+        odd_path, even_path, page_info = process_multiple_pdfs(saved_paths, OUTPUT_FOLDER, add_watermarks=add_watermarks, remove_first_last=remove_first_last)
+        
+        # Convert paths to relative for web access
+        page_info['odd_output'] = os.path.relpath(odd_path)
+        page_info['even_output'] = os.path.relpath(even_path)
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(saved_paths)} PDF(s) processed and merged successfully',
+            'page_info': page_info
+        })
+    
+    except Exception as e:
+        logger.error(f"Error processing multiple PDFs: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
